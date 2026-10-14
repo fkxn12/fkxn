@@ -31,7 +31,13 @@ DEFAULT_JURY = 12
 QUICK_JURY = 6
 WAVE = 6
 CREDIT = ("_Made with [/court](https://github.com/alexyc9381/court-skill), a free Claude Code skill by Alex Chen ([@nocodealex](https://instagram.com/nocodealex))._")
-CHARGE = "The case fails as stated: it should not go ahead the way it is described."
+CHARGE = "이 계획은 지금 적힌 그대로는 성립하지 않으며, 이대로 실행해서는 안 된다."
+# The skill is used by Korean speakers living in South Korea: every sub-agent writes in Korean and
+# reads the case in a Korean context unless the case file says otherwise.
+LANGUAGE = ("Write everything in Korean (한국어, 존댓말). The user lives in South Korea: unless the case file "
+            "says otherwise, read money, law, tax, insurance and the market in a South Korean context, but "
+            "never invent Korea-specific facts or figures the record does not contain.")
+VOTE_KO = {"GUILTY": "유죄", "NOT GUILTY": "무죄", "HUNG JURY": "불일치(평결 불성립)", "NO VOTE": "기권"}
 
 
 # ---------- state ----------
@@ -39,6 +45,14 @@ CHARGE = "The case fails as stated: it should not go ahead the way it is describ
 def load_jurors():
     with open(os.path.join(HERE, "jurors.json")) as f:
         return json.load(f)
+
+
+def juror_name(juror):
+    """Korean name, also for trials opened before the jurors were translated."""
+    for j in load_jurors():
+        if juror["name"] in (j["name"], j.get("en")):
+            return j["name"]
+    return juror["name"]
 
 
 def run_dir():
@@ -112,7 +126,7 @@ def brief_text(state, phase, job):
             "everything you know is in the files named below. Use only what is in the record. Never invent "
             "facts, numbers, quotes or sources. Where the record is silent, say what is missing and why it "
             "matters. Write your answer to exactly this file and nothing else:\n\n    %s\n\n"
-            "The charge: %s\n\nThe case file: %s\n\n" % (job["output"], CHARGE, case))
+            "%s\n\nThe charge: %s\n\nThe case file: %s\n\n" % (job["output"], LANGUAGE, CHARGE, case))
     if phase == "opening":
         if job["id"] == "prosecution":
             return head + (
@@ -146,23 +160,25 @@ def brief_text(state, phase, job):
             "Decide on your own: you will never see the other jurors. You owe the case nothing. Voting for it "
             "to be kind, or against it to look tough, is contempt of court. Judge it through your own eyes "
             "as described above.\n\n"
-            "Write exactly these four lines and nothing else:\n\n"
-            "VOTE: GUILTY or NOT GUILTY\n"
-            "REASON: one sentence, in your own voice\n"
-            "DECIDING FACT: the one fact from the record that decided it\n"
-            "WOULD FLIP IF: the one change to the case that would make you vote the other way\n"
-            % (idx + 1, len(state["jury"]), juror["name"], juror["lens"], record))
+            "Write exactly these four lines and nothing else. Keep the Korean labels exactly as shown, "
+            "and write the vote as 유죄 (guilty) or 무죄 (not guilty):\n\n"
+            "표결: 유죄 또는 무죄\n"
+            "이유: 당신의 목소리로 쓴 한 문장\n"
+            "결정적 사실: 판단을 가른 기록 속 사실 하나\n"
+            "번복 조건: 반대로 투표하게 만들 사건의 변화 하나\n"
+            % (idx + 1, len(state["jury"]), juror_name(juror), juror["lens"], record))
     if phase == "judge":
         return head + (
             "You are the JUDGE. The jury has voted and you cannot overturn the vote. Read the case file, the "
             "four statements in %s and %s, every juror's vote in %s, and the count in %s.\n\n"
-            "Write these sections, plainly, for someone who has never seen a courtroom:\n\n"
-            "## Charges that stuck\nThe 3 objections the jurors cited most, each in one sentence, with how "
+            "Write these sections, plainly, for someone who has never seen a courtroom. Use exactly these "
+            "Korean headings:\n\n"
+            "## 유죄로 인정된 혐의\nThe 3 objections the jurors cited most, each in one sentence, with how "
             "many jurors leaned on it.\n\n"
-            "## What the defense got right\nThe 2 strongest points in the case's favour.\n\n"
-            "## Conditions for acquittal\nThe 3 specific changes that would flip the most votes, built from "
-            "the jurors' WOULD FLIP IF lines. Each one is something the user can do this week.\n\n"
-            "## The sentence\nOne short paragraph in a judge's voice: what the user should do next.\n\n"
+            "## 변호인이 옳았던 점\nThe 2 strongest points in the case's favour.\n\n"
+            "## 무죄가 되기 위한 조건\nThe 3 specific changes that would flip the most votes, built from "
+            "the jurors' 번복 조건 lines. Each one is something the user can do this week.\n\n"
+            "## 판결\nOne short paragraph in a judge's voice: what the user should do next.\n\n"
             "250 words at most. Do not repeat the vote count: it is printed above your judgment.\n"
             % (_abs(state, "opening"), _abs(state, "rebuttal"), _abs(state, "jury"),
                _abs(state, "tally.json")))
@@ -171,7 +187,7 @@ def brief_text(state, phase, job):
 
 # ---------- votes ----------
 
-VOTE_RE = re.compile(r"^\s*\**VOTE\**\s*:\s*\**\s*(NOT\s+GUILTY|GUILTY)", re.I | re.M)
+VOTE_RE = re.compile(r"^\s*\**(?:VOTE|표결)\**\s*:\s*\**\s*(NOT\s+GUILTY|GUILTY|무죄|유죄)", re.I | re.M)
 FIELD_RE = r"^\s*\**%s\**\s*:\s*(.+)$"
 
 
@@ -179,9 +195,10 @@ def parse_vote(text):
     m = VOTE_RE.search(text or "")
     if not m:
         return None
-    vote = "NOT GUILTY" if "NOT" in m.group(1).upper() else "GUILTY"
+    vote = "NOT GUILTY" if m.group(1).upper().startswith("NOT") or m.group(1) == "무죄" else "GUILTY"
     out = {"vote": vote}
-    for key, name in (("reason", "REASON"), ("fact", "DECIDING FACT"), ("flip", "WOULD FLIP IF")):
+    for key, name in (("reason", "(?:REASON|이유)"), ("fact", "(?:DECIDING FACT|결정적 사실)"),
+                      ("flip", "(?:WOULD FLIP IF|번복 조건)")):
         f = re.search(FIELD_RE % name, text, re.I | re.M)
         out[key] = f.group(1).strip().strip("*").strip() if f else ""
     return out
@@ -192,7 +209,7 @@ def tally(state):
     for j, juror in zip(jobs(state, "jury"), state["jury"]):
         text = open(j["output"]).read() if done(j) else ""
         v = parse_vote(text)
-        rows.append({"juror": juror["name"], "vote": v["vote"] if v else "NO VOTE",
+        rows.append({"juror": juror_name(juror), "vote": v["vote"] if v else "NO VOTE",
                      "reason": v["reason"] if v else "", "fact": v["fact"] if v else "",
                      "flip": v["flip"] if v else ""})
     guilty = sum(1 for r in rows if r["vote"] == "GUILTY")
@@ -212,9 +229,9 @@ def tally(state):
 
 def verdict_line(t):
     if t["verdict"] == "HUNG JURY":
-        return "HUNG JURY, %d to %d" % (t["guilty"], t["not_guilty"])
+        return "%s, %d 대 %d" % (VOTE_KO["HUNG JURY"], t["guilty"], t["not_guilty"])
     big, small = (t["guilty"], t["not_guilty"]) if t["verdict"] == "GUILTY" else (t["not_guilty"], t["guilty"])
-    return "%s, %d to %d" % (t["verdict"], big, small)
+    return "%s, %d 대 %d" % (VOTE_KO[t["verdict"]], big, small)
 
 
 def render(state):
@@ -222,14 +239,14 @@ def render(state):
     case = open(os.path.join(state["dir"], "case.md")).read().strip()
     first = case.splitlines()[0].lstrip("# ").strip() if case else "(empty case)"
     judge = jobs(state, "judge")[0]
-    judgment = open(judge["output"]).read().strip() if done(judge) else "_The judge has not ruled yet._"
-    lines = ["# The verdict: %s" % verdict_line(t), "",
-             "**The case:** %s" % first, "", "**The charge:** %s" % CHARGE, "",
-             "## How the jury voted", "", "| Juror | Vote | Why |", "|---|---|---|"]
+    judgment = open(judge["output"]).read().strip() if done(judge) else "_판사가 아직 판결하지 않았습니다._"
+    lines = ["# 평결: %s" % verdict_line(t), "",
+             "**사건:** %s" % first, "", "**공소 사실:** %s" % CHARGE, "",
+             "## 배심원 표결", "", "| 배심원 | 표결 | 이유 |", "|---|---|---|"]
     for r in t["jurors"]:
-        lines.append("| %s | %s | %s |" % (r["juror"], r["vote"], r["reason"].replace("|", "/")))
+        lines.append("| %s | %s | %s |" % (r["juror"], VOTE_KO[r["vote"]], r["reason"].replace("|", "/")))
     lines += ["", judgment, "",
-              "_The full trial is in %s: the opening statements, the rebuttals and every juror's vote._"
+              "_재판 전체 기록(모두진술, 반박, 배심원별 표결)은 %s 에 있습니다._"
               % os.path.abspath(state["dir"]), "", CREDIT]
     text = "\n".join(lines) + "\n"
     with open(os.path.join(state["dir"], "VERDICT.md"), "w") as f:

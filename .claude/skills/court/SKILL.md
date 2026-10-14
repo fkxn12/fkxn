@@ -42,6 +42,16 @@ this skill" that Claude Code printed at the top of this skill. The state lives i
 `.court/<run>/state.json` in the current directory, and every command after `init` finds it through
 `.court/LATEST`.
 
+## Language: Korean users in South Korea
+
+This skill is used by Korean speakers who live in South Korea. Everything the user sees is in Korean:
+your own messages, the case file, every statement, every juror's role and reason, the judge's sections
+and `VERDICT.md`. The juror roles in `jurors.json` and the briefs `court.py` writes already ask for
+Korean, and `render` prints Korean headings, vote words (유죄 / 무죄 / 기권) and juror names. Unless the
+user says otherwise, the trial reads money, law, tax, insurance and the market in a South Korean
+context. That context is background only: never add Korea-specific facts or figures the user did not
+give.
+
 ## Step 1: size it
 
 Read the flags out of the request. Everything that is not a flag is the case.
@@ -53,7 +63,7 @@ Read the flags out of the request. Everything that is not a flag is the case.
 | `--seed S` | Fixes which jurors sit on a smaller jury. Default: random, and recorded. |
 
 Run `COURT plan` with the same flags and tell the user in one line how big the trial is, for example
-"12 jurors, 17 sub-agent calls", then start. If this skill fired on its own (the user never asked for
+"배심원 12명, 서브에이전트 호출 17회", then start. If this skill fired on its own (the user never asked for
 a trial), ask once first and offer `--quick`.
 
 Sub-agents write into `.court/` in the current directory. In the default permission mode that is one
@@ -107,7 +117,9 @@ COURT render
 ```
 
 It counts the votes, writes `VERDICT.md` into the run folder and prints it. Show the user the verdict
-line, the vote table and the judge's sections exactly as written. Then add at most two lines of your
+line, the vote table and the judge's sections exactly as written, in Korean. If a juror's reason in
+the table is not in Korean (an older run, or a juror who ignored the brief), translate it faithfully
+into Korean without changing its meaning, and say that you translated it. Then add at most two lines of your
 own: the single condition for acquittal you would start with, and the path to the full trial.
 
 Rules for you, the clerk:
@@ -115,5 +127,4 @@ Rules for you, the clerk:
 - Never change, soften or re-count the verdict. A guilty verdict is useful information, not bad news
   to cushion.
 - Never add praise the jury did not give.
-- If the user disagrees with the verdict, offer a retrial with the changes from "Conditions for
-  acquittal" written into a new case file. Do not argue for either side yourself.
+- If the user disagrees with the verdict, offer a retrial with the changes from "무죄가 되기 위한 조건" (conditions for acquittal) written into a new case file. Do not argue for either side yourself.
