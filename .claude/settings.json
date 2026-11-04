@@ -1,0 +1,12 @@
+{
+  "extraKnownMarketplaces": {
+    "ponytail": { "source": { "source": "github", "repo": "DietrichGebert/ponytail" } },
+    "impeccable": { "source": { "source": "github", "repo": "pbakaus/impeccable" } },
+    "hyperframes": { "source": { "source": "github", "repo": "heygen-com/hyperframes" } }
+  },
+  "enabledPlugins": {
+    "ponytail@ponytail": true,
+    "impeccable@impeccable": true,
+    "hyperframes@hyperframes": true
+  }
+}
